@@ -1,11 +1,9 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 import psycopg2
-from psycopg2 import sql
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 import json
 from icecream import ic
-# from typing import Any
+
 
 app = FastAPI()
 
@@ -35,7 +33,7 @@ def connect_to_db(orderDict: dict):
 
         # Commit the transaction
         conn.commit()
-        print("Data inserted successfully!")
+        return "Data inserted successfully!"
 
     except (Exception, psycopg2.Error) as error:
         print("Error while connecting to PostgreSQL:", error)
@@ -47,7 +45,7 @@ def connect_to_db(orderDict: dict):
         if conn:
             cursor.close()
             conn.close()
-            print("PostgreSQL connection is closed.")
+           
 
 
 @app.post("/send_data")
