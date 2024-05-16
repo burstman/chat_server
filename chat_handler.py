@@ -1,7 +1,7 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 import psycopg2
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 import json
+import spacy
 from icecream import ic
 
 
@@ -9,6 +9,47 @@ app = FastAPI()
 
 
 # Connect to PostgreSQL
+
+def word2int(numword) -> int:
+    num = 0
+    try:
+        num = int(numword)
+        return num
+    except ValueError:
+        pass
+    words = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven",
+             "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty"]
+    for idx, word in enumerate(words):
+        if word in numword:
+            num = idx
+    return num
+
+
+
+    # Processes a given phrase and extracts relevant order information, such as the product, type, and quantity.
+    # Args: phrase (str): The input phrase to be processed.
+    # Returns: dict: A dictionary containing the extracted order information, with keys 'product', 'type', and 'qty'.
+
+def process_phrase(phrase: str) -> dict:
+ 
+    nlp = spacy.load('en_core_web_sm')
+    doc = nlp(phrase)
+    orderdict = {}
+    for token in doc:
+        if token.dep_ == 'dobj':
+            # print(token.head.text + token.text.capitalize())
+            dobj = token
+            print(list(dobj.lefts))
+            orderdict.update(product=dobj.lemma_)
+            for child in dobj.lefts:
+                if child.dep_ == 'amod' or child.dep_ == 'compound':
+                    orderdict.update(type=child.text)
+                elif child.dep_ == 'det':
+                    orderdict.update(qty=1)
+                elif child.dep_ == 'nummod':
+                    orderdict.update(qty=word2int(child.text))
+            break
+    return orderdict
 
 
 def connect_to_db(orderDict: dict):
@@ -50,8 +91,9 @@ def connect_to_db(orderDict: dict):
 
 @app.post("/send_data")
 def send_data(data: dict):
-    print(data)
-    message = connect_to_db(dict(data))
+    ic(data)
+    proccessed_phrase =process_phrase(data["message"])
+    message = connect_to_db(proccessed_phrase)
 
     return {"message": message}
 
