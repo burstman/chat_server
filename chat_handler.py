@@ -24,14 +24,13 @@ def word2int(numword) -> int:
             num = idx
     return num
 
-
-
     # Processes a given phrase and extracts relevant order information, such as the product, type, and quantity.
     # Args: phrase (str): The input phrase to be processed.
     # Returns: dict: A dictionary containing the extracted order information, with keys 'product', 'type', and 'qty'.
 
+
 def process_phrase(phrase: str) -> dict:
- 
+
     nlp = spacy.load('en_core_web_sm')
     doc = nlp(phrase)
     orderdict = {}
@@ -52,10 +51,10 @@ def process_phrase(phrase: str) -> dict:
     return orderdict
 
 
-def connect_to_db(orderDict: dict):
+def connect_to_db(orderDict: dict) -> tuple[str, int]:
     db_params = {
         'host': 'localhost',
-        'database': 'postgres',
+        'database': 'base_registry',
         'user': 'postgres',
     }
 
@@ -64,40 +63,41 @@ def connect_to_db(orderDict: dict):
         cursor = conn.cursor()
 
         # Define the SQL statement to insert JSON data
-        insert_query = "INSERT INTO orderIn_json (data) VALUES (%s);"
-
+        insert_query = "INSERT INTO orderIn_json (data) VALUES (%s) RETURNING id;"
+        
         # Convert JSON data to string
         json_str = json.dumps(orderDict)
 
         # Execute the SQL statement
         cursor.execute(insert_query, (json_str,))
-
+         # Get the last inserted row ID
+        last_id = cursor.fetchone()[0]
         # Commit the transaction
         conn.commit()
-        return "Data inserted successfully!"
+        return ("Data inserted successfully!", last_id)
 
     except (Exception, psycopg2.Error) as error:
         print("Error while connecting to PostgreSQL:", error)
         error_message = str(error)
-        return error_message.split("\n")[0]
+        return (error_message.split("\n")[0],0)
 
     finally:
         # Close database connection
         if conn:
             cursor.close()
             conn.close()
-           
+
 
 
 @app.post("/send_data")
 def send_data(data: dict):
     ic(data)
-    proccessed_phrase =process_phrase(data["message"])
+    proccessed_phrase = process_phrase(data["message"])
+   
     message = connect_to_db(proccessed_phrase)
 
-    return {"message": message}
+    return {"id": message[1],"message": message[0]}
 
-    # return {"message": "Data received and processed successfully"}
 
 
 if __name__ == "__main__":
