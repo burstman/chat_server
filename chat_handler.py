@@ -6,6 +6,7 @@ from icecream import ic
 import re
 import logging
 import os
+from typing import List, Tuple, Dict, Optional
 
 app = FastAPI()
 nlp = spacy.load("en_core_web_md")
@@ -70,7 +71,7 @@ def extract_intent(text: str, syn: dict) -> str:
     return ""
 
 
-def extract_tasks(text: str) -> list[str]:
+def extract_tasks(text: str) -> List[str]:
     tasks = []
     doc = nlp(text)
     task_found = False
@@ -87,7 +88,7 @@ def extract_tasks(text: str) -> list[str]:
     return tasks
 
 
-def extract_users(text: str, user_names: dict) -> tuple[list[str], list[str]]:
+def extract_users(text: str, user_names: dict) -> Tuple[List[str], List[str]]:
     user_names_list = []
     non_existing_names = []
     doc = nlp(text)
@@ -99,10 +100,10 @@ def extract_users(text: str, user_names: dict) -> tuple[list[str], list[str]]:
                 user_names_list.append(user_name_lower)
             else:
                 non_existing_names.append(token.text)
-    return user_names_list, non_existing_names
+    return (user_names_list, non_existing_names)
 
 
-def extract_comment(text: str) -> list[str]:
+def extract_comment(text: str) -> list:
     comments = []
     pattern = r"\'(.*?)\'"
     matches = re.findall(pattern, text)
@@ -116,7 +117,7 @@ def extract_comment(text: str) -> list[str]:
     return comments
 
 
-def extract_description(text: str) -> list[str]:
+def extract_description(text: str) -> list:
     descriptions = []
     pattern = r"\'(.*?)\'"
     matches = re.findall(pattern, text)
@@ -130,7 +131,7 @@ def extract_description(text: str) -> list[str]:
     return descriptions
 
 
-def extract_projects(text: str) -> list[str]:
+def extract_projects(text: str) -> List[str]:
     projects = []
     doc = nlp(text)
     project_found = False
@@ -143,19 +144,33 @@ def extract_projects(text: str) -> list[str]:
     return projects
 
 
-def extract_deadline_dates(text: str) -> list[str]:
+def extract_deadline_dates(text: str) -> List[str]:
     dates = []
     doc = nlp(text)
-    for token in doc:
+    deadline_index = None
+
+    # Find the index of the token containing "deadline"
+    for i, token in enumerate(doc):
         if token.text.lower() == "deadline":
-            for ent in doc.ents:
-                if ent.label_ == "DATE" and ent.start > token.i:
-                    dates.append(ent.text)
-                    break
+            deadline_index = i
+            break
+
+    # If "deadline" is found, check for dates after it using regex
+    if deadline_index is not None:
+        # Combine tokens into a single text
+        remaining_text = " ".join([token.text for token in doc[deadline_index + 1 :]])
+        # Search for dates using regex
+        date_matches = re.findall(
+            r"(?<!\d)(?:(?:0?[1-9]|[12][0-9]|3[01])[\/\-](?:0?[1-9]|1[012])[\/\-]\d{4})(?!\d)",
+            remaining_text,
+        )
+        # Append matches to dates list
+        dates.extend(date_matches)
+
     return dates
 
 
-def connect_to_db(order_dict: dict) -> tuple[str, int]:
+def connect_to_db(order_dict: dict) -> Tuple[str, int]:
     try:
         with psycopg2.connect(
             dbname=DB_NAME,
@@ -177,7 +192,7 @@ def connect_to_db(order_dict: dict) -> tuple[str, int]:
         return str(e), -1
 
 
-def extract_all(text: str, usernames: dict, projects: list[str]) -> dict:
+def extract_all(text: str, usernames: dict, projects: List[str]) -> dict:
     intent_synonyms = {
         "create": ["create", "start", "initiate", "add", "append", "make"],
         "update": ["update", "modify", "edit", "set"],
@@ -197,8 +212,6 @@ def extract_all(text: str, usernames: dict, projects: list[str]) -> dict:
     ic(projects_mentioned)
     deadline = extract_deadline_dates(text)
     description = extract_description(text)
-
-   
 
     # Check for existing projects
     existing_projects = [
@@ -326,6 +339,10 @@ def fetch_and_format_data():
 
 def get_most_similar_response(paragraph, query):
     nlp = spacy.load("en_core_web_lg")
+
+    paragraph = " ".join(paragraph.split())
+    paragraph = paragraph.strip().replace("'", "")
+
     doc = nlp(paragraph)
     query_doc = nlp(query)
 
@@ -352,7 +369,9 @@ def store_chat_message(data: dict) -> int:
             port=DB_PORT,
         ) as conn:
             with conn.cursor() as cursor:
-                insert_query = "INSERT INTO chat_messages (data) VALUES (%s) RETURNING id;"
+                insert_query = (
+                    "INSERT INTO chat_messages (data) VALUES (%s) RETURNING id;"
+                )
                 json_data = json.dumps(data)
                 cursor.execute(insert_query, (json_data,))
                 chat_id = cursor.fetchone()[0]
